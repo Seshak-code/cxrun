@@ -1,0 +1,14 @@
+[package]
+name = "cxrun"
+version = "0.1.0"
+edition = "2021"
+description = "Zero-config single-file C++20 script runner with content-addressable caching"
+publish = false
+
+# Dependency budget: keep this list at four single-purpose crates.
+# If you add `fs4` for true flock/LockFileEx locking in cache.rs, note it here.
+[dependencies]
+sha2 = "0.10"       # SHA-256 cache keys
+hex = "0.4"         # Hex encoding for cache directory names
+serde_json = "1.0"  # Milestone 3: ephemeral vcpkg.json generation (unused until then)
+which = "6.0"       # Toolchain discovery in PATH
