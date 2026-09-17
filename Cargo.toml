@@ -12,3 +12,9 @@ sha2 = "0.10"       # SHA-256 cache keys
 hex = "0.4"         # Hex encoding for cache directory names
 serde_json = "1.0"  # Milestone 3: ephemeral vcpkg.json generation (unused until then)
 which = "6.0"       # Toolchain discovery in PATH
+
+[lints.rust]
+missing_docs = "deny"
+
+[lints.clippy]
+pedantic = "warn"

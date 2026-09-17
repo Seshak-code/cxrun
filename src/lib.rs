@@ -17,11 +17,20 @@ pub mod compiler;
 pub mod parser;
 
 /// Top-level error aggregating every subsystem failure.
+///
+/// Each variant wraps the concrete error of the module that produced it, so the
+/// originating subsystem is recoverable by `match` rather than by string
+/// inspection. `Display` forwards the inner message verbatim; `Error::source`
+/// chains the wrapped cause so diagnostic tooling can walk the failure.
 #[derive(Debug)]
 pub enum CxrunError {
+    /// The inline `// [deps]` manifest could not be parsed.
     Parse(parser::ParseError),
+    /// The cache root, advisory lock, or key path could not be resolved.
     Cache(cache::CacheError),
+    /// Toolchain discovery or the compilation itself failed.
     Compile(compiler::CompileError),
+    /// I/O failed outside a subsystem-specific case (e.g. reading the source file).
     Io(std::io::Error),
 }
 

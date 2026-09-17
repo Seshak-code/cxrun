@@ -18,6 +18,11 @@ use std::path::PathBuf;
 pub struct CacheKey(String);
 
 impl CacheKey {
+    /// The digest as a 64-character lowercase hex string.
+    ///
+    /// Borrowed rather than converted to an owned `String`: every caller either
+    /// formats it or feeds it to `Path::join`, and both accept `&str`. Handing
+    /// out a borrow also keeps the newtype opaque — callers cannot mutate it.
     pub fn as_str(&self) -> &str {
         &self.0
     }

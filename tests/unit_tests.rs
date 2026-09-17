@@ -40,6 +40,67 @@ fn block_closes_at_first_code_line() {
     assert!(meta.compiler_flags.is_empty());
 }
 
+#[test]
+fn empty_source_is_an_error() {
+    assert_eq!(parse_manifest(""), Err(ParseError::EmptySource));
+}
+
+#[test]
+fn blank_line_inside_block_is_transparent() {
+    let meta = parse_manifest("// [deps]\n// fmt\n\n// -O3\n// [end]").expect("blank line ignored");
+    assert_eq!(meta.packages, vec!["fmt"]);
+    assert_eq!(meta.compiler_flags, vec!["-O3"]);
+}
+
+#[test]
+fn a_second_deps_block_is_ignored() {
+    let meta = parse_manifest("// [deps]\n// fmt\n// [end]\n// [deps]\n// -O3\n// [end]")
+        .expect("second block ignored");
+    assert_eq!(meta.packages, vec!["fmt"]);
+    assert!(meta.compiler_flags.is_empty());
+}
+
+#[test]
+fn a_nested_opener_is_ignored_not_an_error() {
+    let meta = parse_manifest("// [deps]\n// [deps]\n// fmt\n// [end]").expect("nested ignored");
+    assert_eq!(meta.packages, vec!["fmt"]);
+}
+
+#[test]
+fn crlf_line_endings_are_handled() {
+    let meta = parse_manifest("// [deps]\r\n// fmt\r\n// -O3\r\n// [end]").expect("CRLF");
+    assert_eq!(meta.packages, vec!["fmt"]);
+    assert_eq!(meta.compiler_flags, vec!["-O3"]);
+}
+
+#[test]
+fn a_flag_containing_a_space_is_kept_whole() {
+    let meta = parse_manifest("// [deps]\n// -O3 extra\n// [end]").expect("space flag");
+    assert_eq!(meta.compiler_flags, vec!["-O3 extra"]);
+}
+
+#[test]
+fn end_with_extra_payload_is_an_error() {
+    assert_eq!(
+        parse_manifest("// [deps]\n// [end] extra\n// [end]"),
+        Err(ParseError::UnknownDirective { line: 2 })
+    );
+}
+
+#[test]
+fn strips_a_utf8_bom() {
+    let meta = parse_manifest("\u{FEFF}// [deps]\n// fmt\n// [end]").expect("BOM is stripped");
+    assert_eq!(meta.packages, vec!["fmt"]);
+}
+
+#[test]
+fn unknown_directive_inside_a_block_is_an_error() {
+    assert_eq!(
+        parse_manifest("// [deps]\n// [DEP]\n// [end]"),
+        Err(ParseError::UnknownDirective { line: 2 })
+    );
+}
+
 // ---------- cache key ----------
 
 fn base_inputs() -> KeyInputs {
