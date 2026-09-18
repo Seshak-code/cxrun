@@ -1,61 +1,45 @@
-//! Content-addressable build cache.
-//!
-//! Layout (root is `$CXRUN_CACHE_DIR` when set — used by integration tests —
-//! otherwise `~/.cxrun/cache`):
-//! ```text
-//! <root>/<sha256>/app.bin    compiled binary (app.exe on Windows)
-//! <root>/<sha256>.lock       advisory lock held during compilation
-//! ```
-//!
-//! Pure/impure split: `compute_key` is a pure function (unit-test it in
-//! memory); everything that touches the filesystem returns `CacheError`.
-
+//! Content-addressable build cache rooted at `$CXRUN_CACHE_DIR` or `~/.cxrun/cache`.
+use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 
-/// Hex-encoded SHA-256 of every build input. Newtype so a hash can never be
-/// passed where a path or flag belongs — zero runtime cost.
+/// Cache-format version. Bumping it invalidates every cached artifact.
+pub const KEY_VERSION: u32 = 1;
+
+/// Hex-encoded SHA-256 digest of every build input.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CacheKey(String);
 
 impl CacheKey {
-    /// The digest as a 64-character lowercase hex string.
-    ///
-    /// Borrowed rather than converted to an owned `String`: every caller either
-    /// formats it or feeds it to `Path::join`, and both accept `&str`. Handing
-    /// out a borrow also keeps the newtype opaque — callers cannot mutate it.
+    /// Returns the 64-character hex digest as a string slice.
     pub fn as_str(&self) -> &str {
         &self.0
     }
 
-    /// Directory that holds every artifact for this key.
+    /// Directory holding artifacts for this key.
     pub fn dir(&self) -> Result<PathBuf, CacheError> {
         todo!("Ok(cache_root()?.join(self.as_str()))")
     }
 
-    /// Final executable path inside `dir()` (`app.exe` on Windows,
-    /// `app.bin` elsewhere).
+    /// Executable path inside `dir()` (`app.exe` on Windows, `app.bin` elsewhere).
     pub fn binary_path(&self) -> Result<PathBuf, CacheError> {
         todo!()
     }
 }
 
-/// Everything that must change the cache key. Callers read bytes from disk
-/// first so `compute_key` stays pure.
+/// All inputs hashed into the cache key.
 #[derive(Debug)]
 pub struct KeyInputs {
     /// Raw bytes of the `.cpp` source file.
     pub source: Vec<u8>,
-    /// `(path, contents)` of every transitive LOCAL header, sorted by path
-    /// for determinism (see `compiler::discover_local_headers`).
+    /// Transitive local headers sorted by path: `(path, contents)`.
     pub local_headers: Vec<(PathBuf, Vec<u8>)>,
     /// Packages from the inline manifest.
     pub packages: Vec<String>,
     /// User flags from the inline manifest.
     pub compiler_flags: Vec<String>,
-    /// Baseline flags actually passed to the compiler.
+    /// Baseline flags passed to the compiler.
     pub baseline_flags: Vec<String>,
-    /// First line of `<compiler> --version` — invalidates the cache when the
-    /// toolchain is upgraded.
+    /// First line of `<compiler> --version`.
     pub compiler_version: String,
 }
 
@@ -99,21 +83,47 @@ impl From<std::io::Error> for CacheError {
     }
 }
 
-/// Cache root directory, creating it if missing.
-///
-/// Resolution order: `$CXRUN_CACHE_DIR` (used directly as the cache dir) →
-/// `$HOME/.cxrun/cache` (Unix) → `%USERPROFILE%\.cxrun\cache` (Windows).
+/// Returns `$CXRUN_CACHE_DIR`, `$HOME/.cxrun/cache`, or `%USERPROFILE%\.cxrun\cache`.
 pub fn cache_root() -> Result<PathBuf, CacheError> {
     todo!()
 }
 
-/// Pure SHA-256 over all `KeyInputs` fields in a fixed order.
-///
-/// Feed each byte run with a length prefix (e.g. `(len as u64).to_be_bytes()`)
-/// so concatenations cannot collide: `("ab", "c")` must differ from
-/// `("a", "bc")`. Return `CacheKey(hex::encode(hasher.finalize()))`.
-pub fn compute_key(_inputs: &KeyInputs) -> CacheKey {
-    todo!()
+/// Computes SHA-256 over the key-format version, then all `KeyInputs`.
+#[must_use]
+pub fn compute_key(inputs: &KeyInputs) -> CacheKey {
+    let mut hasher = Sha256::new();
+
+    hasher.update(KEY_VERSION.to_be_bytes()); // no length prefix. remove if layout changes
+
+    feed(&mut hasher, &inputs.source); // hashing is appended onto list at the end
+
+
+    for (path, contents) in &inputs.local_headers {
+        feed(&mut hasher, path.as_os_str().as_encoded_bytes());
+        feed(&mut hasher, contents);
+    }
+
+    for package in &inputs.packages {
+        feed(&mut hasher, package.as_bytes());
+    }
+
+    for flag in &inputs.compiler_flags {
+        feed(&mut hasher, flag.as_bytes());
+    }
+
+    for flag in &inputs.baseline_flags {
+        feed(&mut hasher, flag.as_bytes());
+    }
+
+    feed(&mut hasher, inputs.compiler_version.as_bytes());
+
+    CacheKey(hex::encode(hasher.finalize())) // makes sure the hash only contains filesystem safe chars
+}
+
+// length prefix to make sure identical hash collision dont occur
+fn feed(hasher: &mut Sha256, bytes: &[u8]) {
+    hasher.update((bytes.len() as u64).to_be_bytes());
+    hasher.update(bytes);
 }
 
 /// RAII guard: removes the lock file on drop.
@@ -127,14 +137,7 @@ impl Drop for LockGuard {
     }
 }
 
-/// Advisory lock on `<cache_root>/<key>.lock`, held across compilation so two
-/// concurrent cxrun processes never write the same binary.
-///
-/// Contract: create the key's cache dir first, then retry
-/// `OpenOptions::create_new(true)` every ~50ms for up to ~30s. Treat locks
-/// older than ~10 minutes as stale (crashed holder) and break them.
-/// Std-only is fine for now; if you want true `flock`/`LockFileEx` semantics,
-/// add the `fs4` crate and update the dependency budget note in Cargo.toml.
+/// Acquires advisory lock `<cache_root>/<key>.lock` during compilation.
 pub fn acquire_lock(_key: &CacheKey) -> Result<LockGuard, CacheError> {
     todo!()
 }

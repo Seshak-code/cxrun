@@ -136,3 +136,14 @@ fn hash_changes_with_compiler_version_and_flags() {
     other_flags.compiler_flags = vec!["-O0".to_string()];
     assert_ne!(compute_key(&base_inputs()), compute_key(&other_flags));
 }
+
+#[test]
+fn length_prefix_separates_concatenations() {
+    let mut ab_then_c = base_inputs();
+    ab_then_c.packages = vec!["ab".to_string(), "c".to_string()];
+
+    let mut a_then_bc = base_inputs();
+    a_then_bc.packages = vec!["a".to_string(), "bc".to_string()];
+
+    assert_ne!(compute_key(&ab_then_c), compute_key(&a_then_bc));
+}
