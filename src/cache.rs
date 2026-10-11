@@ -16,13 +16,22 @@ impl CacheKey {
     }
 
     /// Directory holding artifacts for this key.
+    ///
+    /// # Errors
+    ///
+    /// Same failures as `cache_root`: `NoHomeDir` or `Io`.
     pub fn dir(&self) -> Result<PathBuf, CacheError> {
-        todo!("Ok(cache_root()?.join(self.as_str()))")
+        Ok(cache_root()?.join(self.as_str()))
     }
 
     /// Executable path inside `dir()` (`app.exe` on Windows, `app.bin` elsewhere).
+    ///
+    /// # Errors
+    ///
+    /// Same failures as `dir`.
     pub fn binary_path(&self) -> Result<PathBuf, CacheError> {
-        todo!()
+        let dir = self.dir()?;
+        Ok(dir.join(if cfg!(windows) { "app.exe" } else { "app.bin" }))
     }
 }
 
