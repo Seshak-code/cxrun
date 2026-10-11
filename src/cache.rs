@@ -83,9 +83,26 @@ impl From<std::io::Error> for CacheError {
     }
 }
 
-/// Returns `$CXRUN_CACHE_DIR`, `$HOME/.cxrun/cache`, or `%USERPROFILE%\.cxrun\cache`.
+/// Returns the cache root directory, creating it if missing.
+///
+/// `$CXRUN_CACHE_DIR` wins whenever it is set; otherwise it is `$HOME/.cxrun/cache`,
+/// or `%USERPROFILE%\.cxrun\cache` on Windows.
+///
+/// # Errors
+///
+/// `NoHomeDir` when there is no home variable to fall back on, `Io` when the
+/// directory cannot be created.
 pub fn cache_root() -> Result<PathBuf, CacheError> {
-    todo!()
+    let root = if let Some(dir) = std::env::var_os("CXRUN_CACHE_DIR").filter(|d| !d.is_empty()) {
+        PathBuf::from(dir)
+    } else {
+        let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
+            .ok_or(CacheError::NoHomeDir)?;
+        PathBuf::from(home).join(".cxrun").join("cache")
+    };
+
+    std::fs::create_dir_all(&root)?;
+    Ok(root)
 }
 
 /// Computes SHA-256 over the key-format version, then all `KeyInputs`.
@@ -94,9 +111,7 @@ pub fn compute_key(inputs: &KeyInputs) -> CacheKey {
     let mut hasher = Sha256::new();
 
     hasher.update(KEY_VERSION.to_be_bytes()); // no length prefix. remove if layout changes
-
     feed(&mut hasher, &inputs.source); // hashing is appended onto list at the end
-
 
     for (path, contents) in &inputs.local_headers {
         feed(&mut hasher, path.as_os_str().as_encoded_bytes());
