@@ -5,6 +5,7 @@
 //! `cmd.exe` — inline manifest flags are user-controlled input.
 
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use crate::parser::ScriptMetadata;
 
@@ -22,6 +23,21 @@ pub struct Toolchain {
 pub enum CompileError {
     /// No usable compiler found in PATH.
     NoCompiler,
+    /// A located compiler could not be run, or its version probe printed
+    /// nothing usable.
+    ProbeFailed {
+        /// Compiler binary that was found.
+        compiler: PathBuf,
+        /// Why the probe failed.
+        error: std::io::Error,
+    },
+    /// A located `g++` is older than the GCC 11 C++20 baseline.
+    CompilerTooOld {
+        /// Compiler binary that was found.
+        compiler: PathBuf,
+        /// Raw `-dumpversion` output that failed the gate.
+        found: String,
+    },
     /// Compiler exited non-zero; payload is its captured stderr.
     CompileFailed(String),
     /// Process spawn or pipe failure.
@@ -45,6 +61,16 @@ impl std::fmt::Display for CompileError {
                 )
             }
             Self::CompileFailed(stderr) => write!(f, "compilation failed:\n{stderr}"),
+            Self::ProbeFailed { compiler, error } => write!(
+                f,
+                "found compiler at {} but could not read its version: {error}",
+                compiler.display()
+            ),
+            Self::CompilerTooOld { compiler, found } => write!(
+                f,
+                "g++ at {} is version {found}, but C++20 requires GCC 11 or newer",
+                compiler.display()
+            ),
             Self::Io(e) => write!(f, "failed to run compiler: {e}"),
         }
     }
@@ -54,6 +80,7 @@ impl std::error::Error for CompileError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Io(e) => Some(e),
+            Self::ProbeFailed { error, .. } => Some(error),
             _ => None,
         }
     }
@@ -68,8 +95,81 @@ impl From<std::io::Error> for CompileError {
 /// Probe order: `clang++`, then `g++` on Linux only (require `-dumpversion`
 /// major >= 11 for full C++20). Fingerprint: first line of `<bin> --version`.
 /// Use the `which` crate for PATH lookup.
+///
+/// # Errors
+///
+/// `NoCompiler` when no probe finds a binary in PATH, `ProbeFailed` when a
+/// located compiler cannot be run or prints no usable version, and
+/// `CompilerTooOld` when `g++` predates the GCC 11 C++20 baseline.
 pub fn discover_toolchain() -> Result<Toolchain, CompileError> {
-    todo!()
+    if let Ok(clang) = which::which("clang++") {
+        let version = probe_line(&clang, "--version")?;
+        return Ok(Toolchain {
+            compiler: clang,
+            version,
+        });
+    }
+
+    if cfg!(target_os = "linux") {
+        if let Ok(gpp) = which::which("g++") {
+            let dump = probe_line(&gpp, "-dumpversion")?;
+            let Some(major) = dump_major(&dump) else {
+                return Err(CompileError::ProbeFailed {
+                    compiler: gpp,
+                    error: std::io::Error::other(format!(
+                        "`-dumpversion` printed {dump:?}, not a version number"
+                    )),
+                });
+            };
+            if major < 11 {
+                return Err(CompileError::CompilerTooOld {
+                    compiler: gpp,
+                    found: dump,
+                });
+            }
+            let version = probe_line(&gpp, "--version")?;
+            return Ok(Toolchain {
+                compiler: gpp,
+                version,
+            });
+        }
+    }
+
+    Err(CompileError::NoCompiler)
+}
+
+fn probe_line(compiler: &Path, arg: &str) -> Result<String, CompileError> {
+    let out =
+        Command::new(compiler)
+            .arg(arg)
+            .output()
+            .map_err(|error| CompileError::ProbeFailed {
+                compiler: compiler.to_path_buf(),
+                error,
+            })?;
+
+    let line = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_owned();
+
+    if line.is_empty() {
+        return Err(CompileError::ProbeFailed {
+            compiler: compiler.to_path_buf(),
+            error: std::io::Error::other(format!("`{arg}` printed no usable output")),
+        });
+    }
+
+    Ok(line)
+}
+
+fn dump_major(dump: &str) -> Option<u32> {
+    dump.trim()
+        .split('.')
+        .next()
+        .and_then(|major| major.trim().parse().ok())
 }
 
 /// Baseline flags from the 80/20 compatibility matrix (see project docs).
