@@ -3,7 +3,7 @@
 //! Process rules (security): spawn via `std::process::Command` with explicit
 //! argument arrays. NEVER build a shell string or invoke through `sh -c` /
 //! `cmd.exe` — inline manifest flags are user-controlled input.
-
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -218,10 +218,29 @@ pub fn discover_local_headers(
 /// Compile to a temp file in the same directory and rename into place so
 /// concurrent readers never observe a partial binary.
 pub fn compile(
-    _source: &Path,
-    _output: &Path,
-    _meta: &ScriptMetadata,
-    _toolchain: &Toolchain,
+    source: &Path,
+    output: &Path,
+    meta: &ScriptMetadata,
+    toolchain: &Toolchain,
 ) -> Result<(), CompileError> {
-    todo!()
+    let tmp = output.with_extension(format!("tmp.{}", std::process::id()));
+
+    let out = Command::new(&toolchain.compiler)
+        .args(baseline_flags())
+        .args(&meta.compiler_flags)
+        .arg(source)
+        .arg("-o")
+        .arg(&tmp)
+        .output()?;
+
+    if out.status.code() != Some(0) {
+        let _ = fs::remove_file(&tmp);
+        return Err(CompileError::CompileFailed(
+            String::from_utf8_lossy(&out.stderr).into_owned(),
+        ));
+    }
+
+    fs::rename(&tmp, output)?;
+    Ok(())
 }
+
