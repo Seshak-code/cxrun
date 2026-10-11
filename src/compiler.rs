@@ -243,4 +243,3 @@ pub fn compile(
     fs::rename(&tmp, output)?;
     Ok(())
 }
-

@@ -59,11 +59,8 @@ fn run(source: &Path, script_args: &[String]) -> Result<u8, CxrunError> {
         compiler_version: toolchain.version.clone(),
     });
 
-
-
     let binary_path = key.binary_path()?;
     if !binary_path.exists() {
-
         fs::create_dir_all(key.dir()?)?;
         compile(source, &binary_path, &meta, &toolchain)?;
     }
