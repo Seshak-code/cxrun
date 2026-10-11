@@ -177,10 +177,11 @@ fn dump_major(dump: &str) -> Option<u32> {
 /// - all platforms:  `-std=c++20 -O2`
 /// - macOS:          `-mmacosx-version-min=12.0` (Apple clang already targets
 ///   the host ARM baseline; no `-march` needed here)
-/// - Linux x86_64:   `-march=x86-64-v2` (SSE4.2/POPCNT floor since ~2008;
+/// - Linux `x86_64`:  `-march=x86-64-v2` (SSE4.2/POPCNT floor since ~2008;
 ///   NEVER `-march=native` — cached binaries must not `SIGILL` on other CPUs)
 /// - Linux arm64:    `-march=armv8-a+simd`
 /// - Windows:        static CRT arrives with vcpkg triplets in Milestone 3
+#[must_use]
 pub fn baseline_flags() -> &'static [&'static str] {
     if cfg!(target_os = "macos") {
         &["-std=c++20", "-O2", "-mmacosx-version-min=12.0"]
@@ -203,6 +204,10 @@ pub fn baseline_flags() -> &'static [&'static str] {
 ///
 /// NOTE: `-MM` needs `-I` flags once packages exist (Milestone 3); for
 /// dependency-free M2 scripts it works as-is.
+///
+/// # Errors
+///
+/// `Io` when the `-MM` probe cannot be spawned or its output read.
 pub fn discover_local_headers(
     _source: &Path,
     _toolchain: &Toolchain,
@@ -217,6 +222,11 @@ pub fn discover_local_headers(
 /// failure return `CompileFailed(stderr)` and leave NO file at `output`.
 /// Compile to a temp file in the same directory and rename into place so
 /// concurrent readers never observe a partial binary.
+///
+/// # Errors
+///
+/// `CompileFailed` when the compiler exits non-zero (payload: its captured
+/// stderr); `Io` when the compiler cannot be spawned or the rename fails.
 pub fn compile(
     source: &Path,
     output: &Path,

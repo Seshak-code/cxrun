@@ -11,6 +11,7 @@ pub struct CacheKey(String);
 
 impl CacheKey {
     /// Returns the 64-character hex digest as a string slice.
+    #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -162,6 +163,11 @@ impl Drop for LockGuard {
 }
 
 /// Acquires advisory lock `<cache_root>/<key>.lock` during compilation.
+///
+/// # Errors
+///
+/// `Io` when the lock file cannot be created or inspected; `LockContended`
+/// when another process still holds the lock after ~30 s of retries.
 pub fn acquire_lock(_key: &CacheKey) -> Result<LockGuard, CacheError> {
     todo!()
 }

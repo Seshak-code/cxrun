@@ -20,8 +20,7 @@ impl TempDir {
     fn new() -> Self {
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
+            .map_or(0, |d| d.as_nanos());
         let path = std::env::temp_dir().join(format!("cxrun-test-{}-{nanos}", std::process::id()));
         std::fs::create_dir_all(&path).expect("create temp dir");
         Self(path)
@@ -47,7 +46,7 @@ fn run_crun(script: &Path, cache_dir: &Path) -> ExitStatus {
 }
 
 #[test]
-#[ignore]
+#[ignore = "needs a host C++ compiler"]
 fn cold_run_compiles_and_forwards_exit_code() {
     let tmp = TempDir::new();
     let script = tmp.path().join("test.cpp");
@@ -58,7 +57,7 @@ fn cold_run_compiles_and_forwards_exit_code() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "needs a host C++ compiler"]
 fn hot_run_hits_cache_under_50ms() {
     let tmp = TempDir::new();
     let script = tmp.path().join("test.cpp");
@@ -80,7 +79,7 @@ fn hot_run_hits_cache_under_50ms() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "needs a host C++ compiler"]
 fn editing_source_invalidates_cache() {
     let tmp = TempDir::new();
     let script = tmp.path().join("test.cpp");
