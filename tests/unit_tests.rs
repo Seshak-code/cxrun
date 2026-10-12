@@ -101,6 +101,14 @@ fn unknown_directive_inside_a_block_is_an_error() {
     );
 }
 
+#[test]
+fn a_bare_comment_inside_a_block_is_ignored() {
+    let meta = parse_manifest("// [deps]\n// fmt\n//\n   //   \n// -O3\n// [end]")
+        .expect("bare comment ignored");
+    assert_eq!(meta.packages, vec!["fmt"]);
+    assert_eq!(meta.compiler_flags, vec!["-O3"]);
+}
+
 // ---------- cache key ----------
 
 fn base_inputs() -> KeyInputs {

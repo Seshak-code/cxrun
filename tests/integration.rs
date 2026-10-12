@@ -91,3 +91,26 @@ fn editing_source_invalidates_cache() {
     std::fs::write(&script, "int main() { return 2; }").expect("write v2");
     assert_eq!(run_crun(&script, &cache).code(), Some(2));
 }
+
+#[test]
+#[ignore = "needs a host C++ compiler"]
+fn manifest_o_flag_cannot_redirect_the_output() {
+    let tmp = TempDir::new();
+    let script = tmp.path().join("test.cpp");
+    let redirect = tmp.path().join("evil.bin");
+    std::fs::write(
+        &script,
+        format!(
+            "// [deps]\n// -o {}\n// [end]\nint main() {{ return 42; }}\n",
+            redirect.display()
+        ),
+    )
+    .expect("write script");
+
+    let status = run_crun(&script, &tmp.path().join("cache"));
+    assert_eq!(status.code(), Some(42));
+    assert!(
+        !redirect.exists(),
+        "manifest -o must not redirect the output"
+    );
+}
